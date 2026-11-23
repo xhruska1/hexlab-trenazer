@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HexLab – trenažér rozboru síťových rámců</title>
+<meta name="description" content="Trénink čtení Ethernet, IPv4/IPv6, ARP, TCP/UDP rámců z hex výpisu a převodů hex → desítkově. Průvodce, zkouška nanečisto, bleskovka a tahák.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: workbench — hex dump + answer sheet on the left, guide / exam panel on the right; stacks on narrow screens */
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --panel2:#f4f6f9; --line:#d6dce5; --fg:#141b26; --muted:#5a6475;
+  --accent:#d27c06; --accent-fg:#1b1204; --accent-soft:#fbeed8;
+  --ok:#157f46; --ok-soft:#dcf2e5; --bad:#c23636; --bad-soft:#f9e1e1;
+  --chip-fg:#10151d;
+  --c-dst:#f07575; --c-src:#f3a352; --c-type:#62a8f2; --c-l4:#55c784; --c-sip:#41c2c2; --c-dip:#a88cf2;
+  --c-sp:#f28fbf; --c-dp:#b9d75a; --c-msg:#f2c94c; --c-vlan:#a7b0bf;
+  --font-ui:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,Consolas,'Courier New',monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f131a; --panel:#161b24; --panel2:#1c222d; --line:#2a3240; --fg:#e4e8ef; --muted:#8e98aa;
+  --accent:#f2a33a; --accent-fg:#1b1204; --accent-soft:#3a2a12;
+  --ok:#43c785; --ok-soft:#13301f; --bad:#ff7a7a; --bad-soft:#3a1a1c; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f131a; --panel:#161b24; --panel2:#1c222d; --line:#2a3240; --fg:#e4e8ef; --muted:#8e98aa;
+  --accent:#f2a33a; --accent-fg:#1b1204; --accent-soft:#3a2a12;
+  --ok:#43c785; --ok-soft:#13301f; --bad:#ff7a7a; --bad-soft:#3a1a1c; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 40px}
+.wrap{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+code,.mono{font-family:var(--font-mono)}
+code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:0 .3em;font-size:.92em}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.brand{display:flex;align-items:baseline;gap:8px;margin-right:auto}
+.brand b{font-family:var(--font-mono);font-weight:600;font-size:20px;letter-spacing:-.02em}
+.brand b span{color:var(--accent)}
+.brand small{color:var(--muted);font-size:13px}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px}
+nav.tabs button{border:0;background:transparent;padding:7px 14px;border-radius:8px;font-weight:500;color:var(--muted)}
+nav.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-fg)}
+
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.controls label{display:flex;flex-direction:column;gap:2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+select,input[type=text],textarea{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px}
+.controls select{min-width:0;max-width:100%}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.ghost{background:transparent}
+.btn.small{padding:4px 10px;font-size:13px;font-weight:500}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.spacer{flex:1}
+
+.work{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:960px){.work{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.eyebrow .pill{letter-spacing:0;text-transform:none}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:12px;color:var(--muted);background:var(--panel2)}
+.ctx{margin:10px 0 12px;font-size:13.5px;color:var(--muted);background:var(--panel2);border:1px dashed var(--line);border-radius:8px;padding:8px 10px}
+.ctx b{color:var(--fg)}
+
+/* hex dump */
+.dumpScroll{overflow-x:auto}
+.dump{display:grid;grid-template-columns:2.6em repeat(16,minmax(1.7em,1fr));gap:3px 3px;font-family:var(--font-mono);font-size:15px;min-width:420px;user-select:none}
+.dump .oh{font-size:11px;color:var(--muted);text-align:center;padding-bottom:2px}
+.dump .ro{font-size:11px;color:var(--muted);align-self:center;text-align:right;padding-right:6px}
+.dump .b{text-align:center;border-radius:5px;padding:3px 0;border:1.5px solid transparent;cursor:pointer;transition:background .15s}
+.dump .b:hover{border-color:var(--muted)}
+.dump .b.c{background:var(--fc);color:var(--chip-fg);font-weight:600}
+.dump .b.cur{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent) inset}
+.dump .b.c.cur{background:var(--fc)}
+.dump .b.sel{outline:2px solid var(--fg);outline-offset:-1px}
+.dump .b.pad{color:var(--muted);opacity:.6}
+.dump .gap{margin-left:6px}
+.info{margin-top:10px;font-size:13px;min-height:2.6em;background:var(--panel2);border-radius:8px;padding:7px 10px;color:var(--muted)}
+.info b{color:var(--fg)} .info code{background:var(--panel)}
+
+.layers{display:flex;gap:3px;margin-top:12px;font-size:11.5px;flex-wrap:wrap}
+.layers div{border-radius:6px;padding:4px 7px;background:var(--panel2);border:1px solid var(--line);min-width:0}
+.layers div b{display:block;font-size:12.5px;color:var(--fg)}
+.layers div span{color:var(--muted);font-family:var(--font-mono)}
+
+/* answer sheet */
+.sheet{display:flex;flex-direction:column;margin-top:8px}
+.sheet .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:10px;padding:6px 4px;border-bottom:1px solid var(--line);font-size:14px;align-items:center}
+.sheet .row:last-child{border-bottom:0}
+.sheet .lab{display:flex;gap:8px;align-items:center;color:var(--muted);min-width:0}
+.dot{width:10px;height:10px;border-radius:3px;background:var(--fc,var(--line));flex:none}
+.sheet .val{font-family:var(--font-mono);overflow-wrap:anywhere}
+.sheet .row.now{background:var(--accent-soft);border-radius:6px}
+.sheet .row.rev .val{color:var(--muted)}
+
+/* guide panel */
+.prog{display:flex;gap:4px;margin-bottom:12px}
+.prog i{flex:1;height:5px;border-radius:3px;background:var(--line)}
+.prog i.ok{background:var(--ok)} .prog i.rev{background:var(--muted)} .prog i.now{background:var(--accent)}
+.stepNo{font-size:13px;color:var(--muted)}
+h2{font-size:22px;margin:2px 0 4px;text-wrap:balance;letter-spacing:-.01em}
+h3{font-size:16px;margin:0 0 6px;text-wrap:balance}
+.hint{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:9px 12px;font-size:14px;margin:10px 0}
+.hint p{margin:0 0 4px}.hint p:last-child{margin:0}
+.ansRow{display:flex;gap:8px;margin-top:6px}
+.ansRow input{flex:1;min-width:0;font-family:var(--font-mono);font-size:16px;padding:10px 12px;border:2px solid var(--accent)}
+.opts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.opts button{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:7px 12px;font-size:14px}
+.opts button:hover{border-color:var(--accent)}
+.opts button.wrong{border-color:var(--bad);background:var(--bad-soft)}
+.opts button.right{border-color:var(--ok);background:var(--ok-soft)}
+.quick{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted)}
+.fb{margin-top:12px;border-radius:8px;padding:10px 12px;font-size:14px}
+.fb.ok{background:var(--ok-soft);border:1px solid var(--ok)}
+.fb.bad{background:var(--bad-soft);border:1px solid var(--bad)}
+.fb strong{display:block;margin-bottom:2px}
+.fb.ok strong{color:var(--ok)} .fb.bad strong{color:var(--bad)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.why{font-size:13.5px;color:var(--muted);margin-top:6px}
+
+/* exam */
+.exam{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+.ex{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:4px 10px;padding:7px 4px;border-bottom:1px solid var(--line);align-items:center}
+.ex label{font-size:13.5px;display:flex;gap:7px;align-items:center;min-width:0}
+.ex label .n{font-family:var(--font-mono);color:var(--muted);font-size:12px}
+.ex input,.ex select{width:100%;min-width:0;font-family:var(--font-mono);font-size:14px}
+.ex.ok input,.ex.ok select{border-color:var(--ok);background:var(--ok-soft)}
+.ex.bad input,.ex.bad select{border-color:var(--bad);background:var(--bad-soft)}
+.ex .res{grid-column:1/-1;font-size:13px;color:var(--muted)}
+.ex .res b.okc{color:var(--ok)} .ex .res b.badc{color:var(--bad)}
+.ex:hover{background:var(--panel2)}
+.score{font-size:28px;font-weight:700;font-family:var(--font-mono)}
+.timer{font-family:var(--font-mono);font-weight:600;font-size:18px}
+.timer.low{color:var(--bad)}
+.stats{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:13px}
+.stats .s{display:grid;grid-template-columns:minmax(0,1fr) 90px 40px;gap:8px;align-items:center}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+
+/* custom frame */
+details.custom{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+details.custom summary{cursor:pointer;font-weight:600}
+details.custom textarea{width:100%;min-height:110px;font-family:var(--font-mono);font-size:13px;margin-top:8px}
+.crow{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-top:8px}
+.crow label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
+.err{color:var(--bad);font-size:13px;margin-top:6px}
+
+/* blitz */
+.blitz{max-width:640px;margin:0 auto;width:100%;text-align:center}
+.bq{font-size:22px;margin:18px 0 10px;min-height:2.4em}
+.bq code{font-size:1em}
+.btime{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:12px 0}
+.btime i{display:block;height:100%;background:var(--accent);transition:width .25s linear}
+.bstat{display:flex;justify-content:center;gap:28px;font-family:var(--font-mono)}
+.bstat div{display:flex;flex-direction:column;font-size:12px;color:var(--muted)}
+.bstat b{font-size:26px;color:var(--fg)}
+.blitz .ansRow{max-width:420px;margin:8px auto 0}
+.blitz .opts{justify-content:center}
+.bfb{min-height:1.6em;margin-top:10px;font-size:14px}
+
+/* cheat sheet */
+.cheat{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:14px}
+.cheat .card p{margin:.3em 0 .6em;max-width:65ch}
+.cheat ol{padding-left:1.3em;margin:.3em 0}
+.cheat li{margin:.25em 0}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.m{font-family:var(--font-mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.hexgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;font-family:var(--font-mono);font-size:13px;text-align:center}
+.hexgrid div{background:var(--panel2);border-radius:6px;padding:4px 0}
+.hexgrid div b{color:var(--accent)}
+.wide{grid-column:1/-1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.foot{margin-top:8px;text-align:center;font-size:12.5px;color:var(--muted)}
+.foot a{color:inherit}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><b>Hex<span>Lab</span></b><small>rozbor síťových rámců z hex výpisu</small></div>
+    <nav class="tabs" role="tablist">
+      <button id="tab-guide" role="tab" aria-selected="true" data-tab="guide">Průvodce</button>
+      <button id="tab-exam" role="tab" aria-selected="false" data-tab="exam">Zkouška nanečisto</button>
+      <button id="tab-blitz" role="tab" aria-selected="false" data-tab="blitz">Bleskovka 60 s</button>
+      <button id="tab-cheat" role="tab" aria-selected="false" data-tab="cheat">Tahák</button>
+    </nav>
+  </header>
+
+  <!-- WORKBENCH (guide + exam) -->
+  <section id="workbench" class="col">
+    <div class="controls">
+      <label>Typ úlohy<select id="opt-kind"></select></label>
+      <label>Verze IP<select id="opt-ipv"><option value="4">IPv4 (+ ARP)</option><option value="6">IPv6 (+ NDP)</option><option value="mix">Mix, převážně IPv4</option></select></label>
+      <label>Struktura<select id="opt-struct"><option value="basic">Základní</option><option value="vlan">VLAN 802.1Q</option><option value="opts">IP volby / IPv6 rozšíření</option><option value="mix">Mix (pokročilé)</option></select></label>
+      <label>DNS přes<select id="opt-dnst"><option value="udp">UDP</option><option value="both">UDP i TCP</option><option value="tcp">TCP</option></select></label>
+      <label id="lvl-wrap">Úroveň<select id="opt-level"><option value="1">1 · ukáže kde hledat</option><option value="2">2 · jen jak na to</option><option value="3">3 · bez nápovědy</option></select></label>
+      <label id="timer-wrap" hidden>Časovač<select id="opt-timer"><option value="0">vypnuto</option><option value="5">5 min</option><option value="8">8 min</option><option value="12">12 min</option></select></label>
+      <span class="spacer"></span>
+      <button class="btn primary" id="btn-new">Nový rámec ↻</button>
+    </div>
+
+    <details class="custom" id="custom">
+      <summary>Vlastní rámec ze cvičení (vlož hex výpis)</summary>
+      <textarea id="c-hex" spellcheck="false" placeholder="např.&#10;e0 2f 6d 2b ba 40 a8 3b 76 0c bd 75 08 00 45 00&#10;00 76 bf 0b 00 00 80 11 ...&#10;(funguje i výpis z Wiresharku s offsety)"></textarea>
+      <div class="crow">
+        <label>Prefix sítě odesílatele<input type="text" id="c-prefix" value="24" size="4"></label>
+        <label>IP výchozí brány (nepovinné)<input type="text" id="c-gw" placeholder="např. 10.65.106.1" size="18"></label>
+        <button class="btn primary" id="c-load">Načíst rámec</button>
+      </div>
+      <div class="err" id="c-err"></div>
+    </details>
+
+    <div class="work">
+      <div class="col">
+        <div class="card">
+          <div class="eyebrow">Zachycený rámec <span class="pill" id="f-meta"></span></div>
+          <div class="ctx" id="f-ctx"></div>
+          <div class="dumpScroll"><div class="dump" id="dump"></div></div>
+          <div class="info" id="info"></div>
+          <div class="layers" id="layers" hidden></div>
+        </div>
+        <div class="card" id="sheetCard">
+          <div class="eyebrow">Tvůj zkouškový list</div>
+          <div class="sheet" id="sheet"></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card" id="panel"></div>
+        <div class="card" id="statsCard">
+          <div class="eyebrow">Kde chybuješ <span class="pill" id="st-total"></span></div>
+          <div class="stats" id="stats"></div>
+          <div class="actions"><button class="btn small ghost" id="st-reset">Smazat statistiky</button><span class="why" id="st-confirm"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BLITZ -->
+  <section id="blitzView" hidden>
+    <div class="card blitz">
+      <div class="eyebrow" style="justify-content:center">Převody a číselníky na čas</div>
+      <h2 style="margin-top:6px">60 sekund, co nejvíc správně</h2>
+      <p class="why">Hex → desítkově, porty, IP adresy, EtherType, protokoly, TCP příznaky. Přesně to, co na zkoušce děláš pořád dokola.</p>
+      <div class="btime"><i id="b-bar" style="width:100%"></i></div>
+      <div class="bstat"><div><b id="b-score">0</b>skóre</div><div><b id="b-time">60</b>sekund</div><div><b id="b-best">0</b>rekord</div></div>
+      <div class="bq" id="b-q">Připraven?</div>
+      <div id="b-in"></div>
+      <div class="bfb" id="b-fb"></div>
+      <div class="actions" style="justify-content:center"><button class="btn primary" id="b-start">Start</button></div>
+    </div>
+  </section>
+
+  <!-- CHEAT SHEET -->
+  <section id="cheatView" hidden>
+    <div class="cheat">
+      <div class="card">
+        <h3>Postup na zkoušku</h3>
+        <ol>
+          <li>Bajty <code>0–5</code> = <b>cílová MAC</b>, <code>6–11</code> = <b>zdrojová MAC</b>.</li>
+          <li>Bajty <code>12–13</code>: je tam <code>81 00</code>? To je VLAN značka, posuň všechno dál o 4 bajty. Jinak je to EtherType: <code>≥ 06 00</code> → <b>Ethernet II</b>, <code>≤ 05 dc</code> (1500) → IEEE 802.3.</li>
+          <li>EtherType: <code>08 00</code> IPv4, <code>86 dd</code> IPv6, <code>08 06</code> ARP.</li>
+          <li>IPv4 začíná na <code>14</code>. Bajt <code>14</code> = <code>45</code> → verze 4, délka hlavičky 5×4 = 20 B. Bajt <code>23</code> = protokol. <code>26–29</code> zdrojová IP, <code>30–33</code> cílová IP.</li>
+          <li>Transport začíná na 14 + délka IP hlavičky (obvykle <code>34</code>). Porty: <code>34–35</code> zdrojový, <code>36–37</code> cílový. Převod: první bajt × 256 + druhý.</li>
+          <li>Zpráva: port 53 → DNS (QR bit), port 80 → HTTP (čti ASCII), TCP bez dat → příznaky na <code>47</code>, ICMP → typ na <code>34</code>.</li>
+          <li>Brána: je cílová IP ve stejné síti jako zdrojová (podle prefixu)? Ano → brána <b>není</b>. Ne → cílová MAC rámce = <b>MAC brány</b>.</li>
+          <li>IP brány v rámci nikdy není. Je jen v zadání (směrovací tabulka), jinak <b>nelze určit</b>.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h3>Mapa pozic, IPv4 bez VLAN a bez voleb</h3>
+        <div class="tbl"><table>
+          <tr><th>Pozice (dec)</th><th>Pole</th><th>Délka</th></tr>
+          <tr><td class="m">0–5</td><td><span class="sw" style="background:var(--c-dst)"></span>Cílová MAC</td><td class="m">6</td></tr>
+          <tr><td class="m">6–11</td><td><span class="sw" style="background:var(--c-src)"></span>Zdrojová MAC</td><td class="m">6</td></tr>
+          <tr><td class="m">12–13</td><td><span class="sw" style="background:var(--c-type)"></span>EtherType</td><td class="m">2</td></tr>
+          <tr><td class="m">14</td><td>Verze + IHL (<code>45</code>)</td><td class="m">1</td></tr>
+          <tr><td class="m">16–17</td><td>Celková délka IP paketu</td><td class="m">2</td></tr>
+          <tr><td class="m">22</td><td>TTL</td><td class="m">1</td></tr>
+          <tr><td class="m">23</td><td><span class="sw" style="background:var(--c-l4)"></span>Protokol (01/06/11)</td><td class="m">1</td></tr>
+          <tr><td class="m">26–29</td><td><span class="sw" style="background:var(--c-sip)"></span>Zdrojová IP</td><td class="m">4</td></tr>
+          <tr><td class="m">30–33</td><td><span class="sw" style="background:var(--c-dip)"></span>Cílová IP</td><td class="m">4</td></tr>
+          <tr><td class="m">34–35</td><td><span class="sw" style="background:var(--c-sp)"></span>Zdrojový port</td><td class="m">2</td></tr>
+          <tr><td class="m">36–37</td><td><span class="sw" style="background:var(--c-dp)"></span>Cílový port</td><td class="m">2</td></tr>
+          <tr><td class="m">34</td><td>ICMP typ (08 request / 00 reply)</td><td class="m">1</td></tr>
+          <tr><td class="m">47</td><td>TCP příznaky</td><td class="m">1</td></tr>
+          <tr><td class="m">42</td><td>začátek dat UDP (DNS), příznaky DNS na <code>44</code></td><td class="m"></td></tr>
+          <tr><td class="m">54</td><td>začátek dat TCP (bez TCP voleb)</td><td class="m"></td></tr>
+        </table></div>
+        <p class="why">S VLAN je všechno od pozice 12 posunuté o +4. S IP volbami je transport posunutý o (IHL−5)×4.</p>
+      </div>
+
+      <div class="card">
+        <h3>IPv6 a ARP</h3>
+        <div class="tbl"><table>
+          <tr><th>IPv6 (od 14)</th><th>Pole</th></tr>
+          <tr><td class="m">14</td><td>první číslice <code>6</code> = verze</td></tr>
+          <tr><td class="m">18–19</td><td>délka dat (payload)</td></tr>
+          <tr><td class="m">20</td><td>Next Header: <code>06</code> TCP, <code>11</code> UDP, <code>3a</code> ICMPv6, <code>00</code>/<code>3c</code>/<code>2b</code> rozšiřující hlavička</td></tr>
+          <tr><td class="m">21</td><td>Hop Limit</td></tr>
+          <tr><td class="m">22–37</td><td>Zdrojová IPv6 (16 B)</td></tr>
+          <tr><td class="m">38–53</td><td>Cílová IPv6 (16 B)</td></tr>
+          <tr><td class="m">54</td><td>transport (hlavička IPv6 má vždy 40 B)</td></tr>
+        </table></div>
+        <div class="tbl" style="margin-top:10px"><table>
+          <tr><th>ARP (od 14)</th><th>Pole</th></tr>
+          <tr><td class="m">14–17</td><td><code>00 01 08 00</code> Ethernet + IPv4</td></tr>
+          <tr><td class="m">18–19</td><td><code>06 04</code> délky adres</td></tr>
+          <tr><td class="m">20–21</td><td>Operace: <code>00 01</code> request, <code>00 02</code> reply</td></tr>
+          <tr><td class="m">22–27</td><td>Sender MAC</td></tr>
+          <tr><td class="m">28–31</td><td>Sender IP</td></tr>
+          <tr><td class="m">32–37</td><td>Target MAC (u requestu nuly)</td></tr>
+          <tr><td class="m">38–41</td><td>Target IP</td></tr>
+        </table></div>
+        <p class="why">ARP nemá IP hlavičku ani porty: protokol po IP = <b>není</b>, porty = <b>není</b>. ARP request jde na <code>ff:ff:ff:ff:ff:ff</code> (broadcast).</p>
+      </div>
+
+      <div class="card">
+        <h3>Číselníky</h3>
+        <div class="tbl"><table>
+          <tr><th>Hex</th><th>Význam</th></tr>
+          <tr><td class="m">08 00 · 86 dd · 08 06 · 81 00</td><td>EtherType: IPv4 · IPv6 · ARP · VLAN</td></tr>
+          <tr><td class="m">01 · 06 · 11 · 3a</td><td>Protokol: ICMP · TCP · UDP (17) · ICMPv6 (58)</td></tr>
+          <tr><td class="m">08 · 00</td><td>ICMP: Echo Request · Echo Reply</td></tr>
+          <tr><td class="m">80 · 81 · 87 · 88</td><td>ICMPv6: Echo Request · Echo Reply · Neighbor Solicitation · Neighbor Advertisement</td></tr>
+          <tr><td class="m">02 · 12 · 10 · 18</td><td>TCP příznaky: SYN · SYN+ACK · ACK · PSH+ACK (data)</td></tr>
+          <tr><td class="m">01 00 · 81 80</td><td>DNS příznaky: dotaz (QR=0) · odpověď (QR=1)</td></tr>
+          <tr><td class="m">47 45 54 · 50 4f 53 54</td><td>ASCII „GET“ · „POST“ → HTTP požadavek</td></tr>
+          <tr><td class="m">48 54 54 50</td><td>ASCII „HTTP“ → HTTP odpověď</td></tr>
+        </table></div>
+        <div class="tbl" style="margin-top:10px"><table>
+          <tr><th>Port</th><th>Služba</th><th>Port</th><th>Služba</th></tr>
+          <tr><td class="m">20/21</td><td>FTP</td><td class="m">53</td><td>DNS</td></tr>
+          <tr><td class="m">22</td><td>SSH</td><td class="m">67/68</td><td>DHCP</td></tr>
+          <tr><td class="m">23</td><td>Telnet</td><td class="m">80</td><td>HTTP</td></tr>
+          <tr><td class="m">25</td><td>SMTP</td><td class="m">443</td><td>HTTPS</td></tr>
+        </table></div>
+        <p class="why">Port nad 1023 (typicky 49152–65535) je náhodný port klienta. Kdo má 53 nebo 80 jako <b>zdrojový</b> port, je server, takže jde o odpověď.</p>
+      </div>
+
+      <div class="card">
+        <h3>Převod hex → desítkové</h3>
+        <p>Jeden bajt: <b>první číslice × 16 + druhá</b>. Písmena: a=10, b=11, c=12, d=13, e=14, f=15.<br><code>c0</code> = 12×16 + 0 = <b>192</b> · <code>a8</code> = 10×16 + 8 = <b>168</b></p>
+        <p>Dva bajty (port, délka): <b>první bajt × 256 + druhý</b>.<br><code>01 bb</code> = 1×256 + 187 = <b>443</b> · <code>00 35</code> = 0 + 53 = <b>53</b></p>
+        <div class="hexgrid" aria-label="Násobky 16">
+          <div><b>1</b>0=16</div><div><b>2</b>0=32</div><div><b>3</b>0=48</div><div><b>4</b>0=64</div>
+          <div><b>5</b>0=80</div><div><b>6</b>0=96</div><div><b>7</b>0=112</div><div><b>8</b>0=128</div>
+          <div><b>9</b>0=144</div><div><b>a</b>0=160</div><div><b>b</b>0=176</div><div><b>c</b>0=192</div>
+          <div><b>d</b>0=208</div><div><b>e</b>0=224</div><div><b>f</b>0=240</div><div><b>ff</b>=255</div>
+        </div>
+        <p class="why">Tip: v hex výpisu klikni na bajt a pak na jiný. Dole se ukáže převod celého výběru (číslo, IP, MAC, ASCII).</p>
+      </div>
+
+      <div class="card">
+        <h3>Výchozí brána: jak to poznat</h3>
+        <p>Zadání řekne, že se rámec zachytil <b>u odesílatele</b>, a dá prefix (např. /24). Porovnej síť zdrojové a cílové IP:</p>
+        <ul>
+          <li><b>/24</b>: stejné první 3 čísla = stejná síť. <b>/16</b>: stejná první 2 čísla.</li>
+          <li><b>Stejná síť</b>: rámec jde přímo, cílová MAC patří cílovému počítači. MAC brány: <b>není</b>.</li>
+          <li><b>Jiná síť</b>: rámec jde na bránu. <b>Cílová MAC rámce = MAC brány</b>, ale cílová IP zůstává adresa koncového cíle.</li>
+          <li>IP brány v rámci nenajdeš. Když ji zadání neuvádí: <b>nelze určit</b>.</li>
+          <li>ARP a IPv6 multicast/link-local (<code>ff02::…</code>, <code>fe80::…</code>) zůstávají v lokální síti, takže brána: <b>není</b>.</li>
+        </ul>
+      </div>
+
+      <div class="card wide">
+        <h3>Jak zapisovat odpovědi</h3>
+        <p>MAC: <code>02:a3:da:7c:0d:9f</code> (bere i pomlčky a velká písmena) · IPv4: <code>192.168.1.10</code> · IPv6: <code>2001:db8::10</code> (zkráceně i plně) · porty desítkově: <code>53</code> · pole, které v rámci není: <code>není</code> · když to ze zadání nejde zjistit: <code>nelze určit</code>.</p>
+      </div>
+    </div>
+  </section>
+  <footer class="foot">
+    HexLab · trenažér pro předmět Počítačové sítě (PEF MENDELU) · Aleš Hruška
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const H=n=>n.toString(16).padStart(2,'0');
+const rnd=n=>Math.floor(Math.random()*n);
+const rint=(a,b)=>a+rnd(b-a+1);
+const pick=a=>a[rnd(a.length)];
+const chance=p=>Math.random()<p;
+const u16=n=>[(n>>8)&255,n&255];
+const u32=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];
+const ascii=s=>[...s].map(c=>c.charCodeAt(0));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n4=a=>((a[0]<<24)>>>0)+(a[1]<<16)+(a[2]<<8)+a[3];
+const eqA=(a,b)=>a.length===b.length&&a.every((x,i)=>x===b[i]);
+function sum16(arr){let s=0;for(let i=0;i<arr.length;i+=2)s+=(arr[i]<<8)|(arr[i+1]||0);while(s>0xffff)s=(s&0xffff)+(s>>>16);return s;}
+const csum=arr=>(~sum16(arr))&0xffff;
+const store={get(k,d){try{const v=localStorage.getItem('hexlab.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('hexlab.'+k,JSON.stringify(v));}catch(e){}}};
+
+function fmt6(a){const w=[];for(let i=0;i<16;i+=2)w.push((a[i]<<8)|a[i+1]);let bs=-1,bl=0;for(let i=0;i<8;){if(w[i]===0){let j=i;while(j<8&&w[j]===0)j++;if(j-i>bl&&j-i>=2){bs=i;bl=j-i;}i=j;}else i++;}const h=x=>x.toString(16);if(bs<0)return w.map(h).join(':');return w.slice(0,bs).map(h).join(':')+'::'+w.slice(bs+bl).map(h).join(':');}
+function parse6(s){if(!/^[0-9a-f:]+$/.test(s))return null;const parts=s.split('::');if(parts.length>2)return null;const L=parts[0]?parts[0].split(':'):[];const R=parts.length===2&&parts[1]?parts[1].split(':'):[];let words;if(parts.length===2){const fill=8-L.length-R.length;if(fill<1)return null;words=[...L,...Array(fill).fill('0'),...R];}else words=L;if(words.length!==8||words.some(x=>!/^[0-9a-f]{1,4}$/.test(x)))return null;return words.map(x=>x.padStart(4,'0')).join('');}
+const bdec=x=>`<code>${H(x)}</code> = ${x>>4}×16 + ${x&15} = <b>${x}</b>`;
+const wdec=(hi,lo)=>`<code>${H(hi)} ${H(lo)}</code> → ${hi}×256 + ${lo} = <b>${hi*256+lo}</b>`;
+
+/* ---------- labels ---------- */
+const LABEL={frameType:'Typ rámce',srcMac:'Zdrojová MAC',dstMac:'Cílová MAC',gwMac:'MAC použité výchozí brány',ethProto:'Protokol nesený Ethernetem',srcIp:'Zdrojová IP / ARP Sender IP',dstIp:'Cílová IP / ARP Target IP',l4:'Protokol po IP hlavičce',sport:'Zdrojový port',dport:'Cílový port',msg:'Zpráva',gwIp:'IP adresa výchozí brány'};
+const COLOR={frameType:'--c-type',srcMac:'--c-src',dstMac:'--c-dst',gwMac:'--c-dst',ethProto:'--c-type',srcIp:'--c-sip',dstIp:'--c-dip',l4:'--c-l4',sport:'--c-sp',dport:'--c-dp',msg:'--c-msg',gwIp:'--c-vlan'};
+const SHEET=['frameType','srcMac','dstMac','gwMac','ethProto','srcIp','dstIp','l4','sport','dport','msg','gwIp'];
+const STEPS=['dstMac','srcMac','frameType','ethProto','srcIp','dstIp','l4','sport','dport','msg','gwMac','gwIp'];
+const KINDS=['dnsq','dnsr','httpq','httpr','echoq','echor','syn','synack','ack','arpq','arpr','ns','na'];
+const KL={dnsq:'DNS požadavek',dnsr:'DNS odpověď',httpq:'HTTP požadavek',httpr:'HTTP odpověď',echoq:'ICMP Echo Request',echor:'ICMP Echo Reply',syn:'TCP SYN',synack:'TCP SYN + ACK',ack:'TCP ACK',arpq:'ARP request',arpr:'ARP reply',ns:'Neighbor Solicitation',na:'Neighbor Advertisement'};
+const MSGS=KINDS.map(k=>KL[k]);
+const OPTS={frameType:['Ethernet II','IEEE 802.3'],ethProto:['IPv4','IPv6','ARP'],l4:['TCP','UDP','ICMP','ICMPv6','není'],msg:MSGS};
+const RESP=new Set(['dnsr','httpr','echor','synack','arpr','na']);
+const SERV={20:'FTP data',21:'FTP',22:'SSH',23:'Telnet',25:'SMTP',53:'DNS',67:'DHCP server',68:'DHCP klient',80:'HTTP',110:'POP3',123:'NTP',143:'IMAP',443:'HTTPS',3389:'RDP',8080:'HTTP (alt)'};
+
+/* ---------- generator ---------- */
+function randMac(){const m=[rnd(256)&0xfe];for(let i=0;i<5;i++)m.push(rnd(256));return m;}
+function privIp(){const t=rnd(3);if(t===0)return[192,168,rnd(256),rint(2,253)];if(t===1)return[10,rnd(256),rnd(256),rint(2,253)];return[172,rint(16,31),rnd(256),rint(2,253)];}
+function pubIp(){return pick([()=>[8,8,8,8],()=>[1,1,1,1],()=>[195,178,72,rint(2,250)],()=>[77,75,rint(0,255),rint(1,254)],()=>[142,250,rint(0,255),rint(1,254)],()=>[104,16,rint(0,255),rint(1,254)],()=>[147,251,rint(0,255),rint(1,254)],()=>[151,101,rint(0,255),rint(1,254)]])();}
+function clientPub(){return[pick([85,89,90,78,46,213,37]),rnd(256),rnd(256),rint(1,254)];}
+const DOMAINS=['mendelu.cz','is.mendelu.cz','www.seznam.cz','google.com','wikipedia.org','github.com','www.idnes.cz','vut.cz','muni.cz','example.com'];
+
+function tcpSeg(sp,dp,flags,payload,opts){opts=opts||[];const doff=(20+opts.length)/4;return[...u16(sp),...u16(dp),...u32(rnd(2**32)>>>0),...u32((flags&0x10)?(rnd(2**32)>>>0):0),doff<<4,flags,...u16(pick([64240,65535,29200,502,8192,1026])),0,0,0,0,...opts,...payload];}
+function dnsMsg(resp,name,qtype,ansAddr){const q=[];name.split('.').forEach(l=>{q.push(l.length,...ascii(l));});q.push(0,...u16(qtype),0,1);const h=[...u16(rnd(65536)),resp?0x81:0x01,resp?0x80:0x00,0,1,0,resp?1:0,0,0,0,0];let m=[...h,...q];if(resp)m.push(0xc0,0x0c,...u16(qtype),0,1,...u32(rint(60,86400)),...u16(ansAddr.length),...ansAddr);return m;}
+
+function buildL4(kind,sc,pseudo){
+  // returns {proto, seg}
+  const cport=chance(.2)?rint(1024,49151):rint(49152,65535);
+  const isR=RESP.has(kind);
+  const ports=(srv)=>isR?[srv,cport]:[cport,srv];
+  let proto,seg;
+  if(kind==='dnsq'||kind==='dnsr'){
+    const name=pick(DOMAINS);const qtype=sc.v6?(chance(.6)?28:1):(chance(.85)?1:28);
+    const addr=qtype===1?pubIp():[0x2a,0x00,0x14,0x50,0x40,0x14,0x08,0x0c,0,0,0,0,0,0,0x20,0x0e];
+    const d=dnsMsg(kind==='dnsr',name,qtype,addr);const [sp,dp]=ports(53);
+    if(sc.dnsTcp){proto=6;seg=tcpSeg(sp,dp,0x18,[...u16(d.length),...d]);}
+    else{proto=17;seg=[...u16(sp),...u16(dp),...u16(8+d.length),0,0,...d];}
+  }else if(kind==='httpq'||kind==='httpr'){
+    const srv=chance(.85)?80:8080;const [sp,dp]=ports(srv);proto=6;
+    const host=pick(DOMAINS);
+    const txt=kind==='httpq'?`${pick(['GET','GET','GET','POST'])} /${pick(['','index.html','login','api/data','img/logo.png'])} HTTP/1.1\r\nHost: ${host}\r\n\r\n`:`HTTP/1.1 ${pick(['200 OK','200 OK','404 Not Found','301 Moved Permanently'])}\r\nServer: nginx\r\nContent-Length: 0\r\n\r\n`;
+    seg=tcpSeg(sp,dp,0x18,ascii(txt));
+  }else if(kind==='syn'||kind==='synack'||kind==='ack'){
+    const srv=pick([80,443,22,25,3389,21]);const [sp,dp]=ports(srv);proto=6;
+    if(kind==='syn')seg=tcpSeg(sp,dp,0x02,[],[2,4,5,0xb4,1,3,3,8,1,1,4,2]);
+    else if(kind==='synack')seg=tcpSeg(sp,dp,0x12,[],[2,4,5,0xb4,1,1,4,2]);
+    else seg=tcpSeg(sp,dp,0x10,[]);
+  }else if(kind==='echoq'||kind==='echor'){
+    const data=chance(.6)?ascii('abcdefghijklmnopqrstuvwabcdefghi'):ascii(pick(['HexLab-ping','ahoj svete!','ping-test']));
+    if(sc.v6){proto=58;seg=[kind==='echoq'?128:129,0,0,0,...u16(rnd(65536)),...u16(rint(1,40)),...data];}
+    else{proto=1;seg=[kind==='echoq'?8:0,0,0,0,...u16(rnd(65536)),...u16(rint(1,40)),...data];}
+  }
+  // checksum
+  const ck=(proto===1)?csum(seg):csum([...pseudo(proto,seg.length),...seg]);
+  const at=proto===6?16:proto===17?6:2;seg[at]=ck>>8;seg[at+1]=ck&255;
+  return{proto,seg};
+}
+function ethFrame(dst,src,type,payload,vlan){const v=vlan?[0x81,0x00,...u16((rnd(8)<<13)|rint(2,4000))]:[];const f=[...dst,...src,...v,...u16(type),...payload];while(f.length<60)f.push(0);return f;}
+
+function genV4(kind,o){
+  const isArp=kind==='arpq'||kind==='arpr',isR=RESP.has(kind);
+  const prefix=chance(.2)?16:24;const mask=(0xffffffff<<(32-prefix))>>>0;const hm=(~mask)>>>0;
+  const local=isArp?true:chance(.45);
+  let sIp=(isR&&!local)?pubIp():privIp();
+  const net=(n4(sIp)&mask)>>>0;
+  const inNet=(not)=>{let x;do{x=u32((net+1+rnd(hm-1))>>>0);}while(not.some(y=>eqA(x,y)));return x;};
+  const gwIp=u32((net+(chance(.75)?1:hm-1))>>>0);
+  if(eqA(sIp,gwIp)||(sIp[3]===0||sIp[3]===255))sIp=inNet([gwIp]);
+  let dIp;
+  if(local){dIp=(kind==='arpq'&&chance(.4))?gwIp:inNet([sIp,gwIp]);}
+  else{do{dIp=isR?clientPub():pubIp();}while(((n4(dIp)&mask)>>>0)===net);}
+  const sMac=randMac(),rMac=randMac(),gwMac=randMac();
+  const ctx={prefix,v6:false,gw:chance(.35)?gwIp.join('.'):null};
+  if(isArp){
+    const req=kind==='arpq';
+    const arp=[0,1,8,0,6,4,0,req?1:2,...sMac,...sIp,...(req?[0,0,0,0,0,0]:rMac),...dIp];
+    return{bytes:ethFrame(req?[255,255,255,255,255,255]:rMac,sMac,0x0806,arp,o.vlan),ctx};
+  }
+  const pseudo=(proto,len)=>[...sIp,...dIp,0,proto,...u16(len)];
+  const {proto,seg}=buildL4(kind,{v6:false,dnsTcp:o.dnsTcp},pseudo);
+  const opts=o.ipopts?pick([[0x94,4,0,0],[0x94,4,0,0,1,1,1,0],[1,1,1,0]]):[];
+  const ihl=5+opts.length/4;const tot=ihl*4+seg.length;
+  const h=[0x40|ihl,0,...u16(tot),...u16(rnd(65536)),...(chance(.7)?[0x40,0]:[0,0]),pick([64,128,255,63,127,54,117]),proto,0,0,...sIp,...dIp,...opts];
+  const c=csum(h);h[10]=c>>8;h[11]=c&255;
+  return{bytes:ethFrame(local?rMac:gwMac,sMac,0x0800,[...h,...seg],o.vlan),ctx};
+}
+function genV6(kind,o){
+  const isR=RESP.has(kind);
+  const gnet=()=>[0x20,0x01,...pick([[0x07,0x18],[0x0d,0xb8],[0x06,0x7c]]),rnd(256),rnd(256),rnd(256),rnd(256)];
+  const iid=()=>chance(.5)?[0,0,0,0,0,0,0,rint(2,250)]:[rnd(256)&0xfd,rnd(256),rnd(256),0xff,0xfe,rnd(256),rnd(256),rnd(256)];
+  const ll=(i)=>[0xfe,0x80,0,0,0,0,0,0,...i];
+  const gwLL=[0xfe,0x80,0,0,0,0,0,0,0,0,0,0,0,0,0,1];
+  const sMac=randMac(),rMac=randMac(),gwMac=randMac();
+  const ctx={prefix:64,v6:true,gw:chance(.35)?'fe80::1':null};
+  let sIp,dIp,dMac,payload,nh,hop=64;
+  const net=gnet();
+  if(kind==='ns'||kind==='na'){
+    hop=255;const useLL=chance(.5);
+    const me=useLL?ll(iid()):[...net,...iid()];
+    const target=chance(.4)?gwLL:(useLL?ll(iid()):[...net,...iid()]);
+    if(kind==='ns'){sIp=me;dIp=[0xff,0x02,0,0,0,0,0,0,0,0,0,1,0xff,target[13],target[14],target[15]];dMac=[0x33,0x33,0xff,target[13],target[14],target[15]];
+      payload=[135,0,0,0,0,0,0,0,...target,1,1,...sMac];}
+    else{sIp=target;dIp=me;dMac=rMac;payload=[136,0,0,0,eqA(target,gwLL)?0xe0:0x60,0,0,0,...target,2,1,...sMac];}
+    nh=58;
+  }else{
+    const local=chance(.45);
+    const pubs=[[0x2a,0x00,0x14,0x50,0x40,0x14,0x08,0x0c,0,0,0,0,0,0,0x20,0x0e],[0x26,0x06,0x47,0,0x47,0,0,0,0,0,0,0,0,0,0x11,0x11],[0x20,0x01,0x48,0x60,0x48,0x60,0,0,0,0,0,0,0,0,0x88,0x88],[0x2a,0x02,0x05,0x98,0x22,0x22,0,1,0,0,0,0,0x02,0x17,0,0x01]];
+    if(local){sIp=[...net,...iid()];do{dIp=[...net,...iid()];}while(eqA(dIp,sIp));dMac=rMac;}
+    else if(isR){sIp=pick(pubs);dIp=[...gnet(),...iid()];dMac=gwMac;}
+    else{sIp=[...net,...iid()];dIp=pick(pubs);dMac=gwMac;}
+  }
+  const pseudo=(proto,len)=>[...sIp,...dIp,...u32(len),0,0,0,proto];
+  if(!payload){const r=buildL4(kind,{v6:true,dnsTcp:o.dnsTcp},pseudo);payload=r.seg;nh=r.proto;}
+  else{const c=csum([...pseudo(58,payload.length),...payload]);payload[2]=c>>8;payload[3]=c&255;}
+  let first=nh;
+  if(o.ipopts){const t=pick([0,60]);payload=[nh,0,1,4,0,0,0,0,...payload];first=t;}
+  const h=[0x60,0,0,0,...u16(payload.length),first,hop,...sIp,...dIp];
+  return{bytes:ethFrame(dMac,sMac,0x86dd,[...h,...payload],o.vlan),ctx};
+}
+function generate(st){
+  const ipv=st.ipv;let kind=st.kind;
+  if(kind==='random'){let pool=KINDS.slice();if(ipv==='4')pool=pool.filter(k=>k!=='ns'&&k!=='na');if(ipv==='6')pool=pool.filter(k=>!k.startsWith('arp'));kind=pick(pool);}
+  let v6=ipv==='6'||(ipv==='mix'&&chance(.25));
+  if(kind.startsWith('arp')){if(ipv==='6')kind=kind==='arpq'?'ns':'na';else v6=false;}
+  if(kind==='ns'||kind==='na')v6=true;
+  let s=st.struct;if(s==='mix')s=pick(['basic','basic','vlan','opts','both']);
+  const o={vlan:s==='vlan'||s==='both',ipopts:s==='opts'||s==='both',dnsTcp:st.dnst==='tcp'||(st.dnst==='both'&&chance(.4))};
+  return v6?genV6(kind,o):genV4(kind,o);
+}
+
+/* ---------- answer normalisation ---------- */
+function norm(kind,raw){
+  const s=String(raw).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');
+  if(kind==='select')return'sel:'+String(raw).trim();
+  if(/^(neni|nic|-|–|zadny|zadna|zadne|none|n\/a|neexistuje|nema)$/.test(s))return'#none';
+  if(/^(nelze|nelze urcit|nejde urcit|nelze zjistit|nejde|neznamo|nezname|\?)$/.test(s))return'#unk';
+  if(kind==='mac'){const h=s.replace(/[^0-9a-f]/g,'');return(h.length===12&&/^[0-9a-f:\-. ]+$/.test(s))?'mac:'+h:'bad:'+s;}
+  if(kind==='ip'){if(s.includes(':')){const p=parse6(s);return p?'ip6:'+p:'bad:'+s;}const m=s.split('.');if(m.length===4&&m.every(x=>/^\d{1,3}$/.test(x)&&+x<256))return'ip4:'+m.map(Number).join('.');return'bad:'+s;}
+  if(kind==='port'){if(/^\d+$/.test(s))return'port:'+Number(s);return'bad:'+s;}
+  return'txt:'+s;
+}
+
+/* ---------- decoder: bytes + context -> answers ---------- */
+function decode(b,ctx){
+  const N=b.length,g=i=>b[i]??0,w=i=>(g(i)<<8)|g(i+1);
+  const hx=(i,n)=>`<code>${Array.from({length:n},(_,k)=>H(g(i+k))).join(' ')}</code>`;
+  const mac=i=>Array.from({length:6},(_,k)=>H(g(i+k))).join(':');
+  const ip4=i=>[0,1,2,3].map(k=>g(i+k)).join('.');
+  const ip4x=i=>[0,1,2,3].map(k=>`${H(g(i+k))}→${g(i+k)}`).join(', ');
+  const F={},layers=[];
+  const fld=(key,kind,answer,ranges,where,how,explain,extra)=>{const acc=new Set([norm(kind,answer),...(extra||[])]);F[key]={key,kind,answer,ranges,where,how,explain,accept:acc};};
+  let off=12,vlan=null;
+  if(w(12)===0x8100){vlan={vid:w(14)&0xfff};off=16;}
+  const et=w(off),p=off+2;
+  layers.push({n:vlan?'Ethernet + VLAN':'Ethernet',s:0,e:p});
+  const vl=vlan?` Pozor: na pozici 12–13 je <code>81 00</code> = VLAN značka 802.1Q (VLAN ${vlan.vid}), takže skutečný EtherType je o 4 bajty dál, na ${off}–${off+1}.`:'';
+
+  const dm=mac(0),sm=mac(6);
+  const bc=dm==='ff:ff:ff:ff:ff:ff',mc=dm.startsWith('33:33');
+  fld('dstMac','mac',dm,[[0,6]],'Bajty 0–5, prvních 6 bajtů rámce.','Ethernet začíná cílovou MAC (přepínač podle ní hned ví, kam rámec poslat). Opiš 6 bajtů a odděl je dvojtečkou.',
+    `Bajty 0–5: ${hx(0,6)} → ${dm}.`+(bc?' Samé <code>ff</code> = broadcast, rámec jde všem v síti.':'')+(mc?' Začíná <code>33:33</code> = IPv6 multicast.':''));
+  fld('srcMac','mac',sm,[[6,6]],'Bajty 6–11.','Hned za cílovou MAC je zdrojová MAC, zase 6 bajtů.',`Bajty 6–11: ${hx(6,6)} → ${sm}. Kdo rámec poslal.`);
+  const ft=et>=0x600?'Ethernet II':'IEEE 802.3';
+  fld('frameType','select',ft,[[off,2]],`Bajty ${off}–${off+1}.`+vl,'Dvoubajtové pole za MAC adresami. Hodnota ≥ 0x0600 (1536) je EtherType → Ethernet II. Hodnota ≤ 1500 je délka → IEEE 802.3.',
+    `${hx(off,2)} = ${et} desítkově. ${et>=0x600?'Víc než 1500, takže je to EtherType → Ethernet II.':'Nejvýš 1500, takže je to délka → IEEE 802.3.'}`+vl);
+  const ep={0x800:'IPv4',0x86dd:'IPv6',0x806:'ARP'}[et]||'není';
+  fld('ethProto','select',ep,[[off,2]],`Bajty ${off}–${off+1} (EtherType).`+vl,'EtherType říká, co je uvnitř: 08 00 = IPv4, 86 dd = IPv6, 08 06 = ARP.',`${hx(off,2)} → ${ep}.`);
+
+  let sIpS='',dIpS='',isArp=false,isV6=false,l4=null,proto=null,l4name='není',endIp=N,nhPos=null,ipHdrInfo='';
+  let sport=null,dport=null,msg='není',msgR=[],msgEx='',msgHow='',pay=null,payEnd=N,summ='';
+  if(et===0x800){
+    const vihl=g(p),ihl=(vihl&15)*4,tot=w(p+2);proto=g(p+9);l4=p+ihl;endIp=Math.min(N,p+tot);
+    sIpS=ip4(p+12);dIpS=ip4(p+16);
+    layers.push({n:'IPv4'+(ihl>20?' + volby':''),s:p,e:l4});
+    ipHdrInfo=`Bajt ${p} = <code>${H(vihl)}</code>: 4 = IPv4, ${vihl&15}×4 = ${ihl} B hlavička${ihl>20?' (je delší než 20 B, obsahuje volby!)':''}. Transport tedy začíná na ${p} + ${ihl} = <b>${l4}</b>.`;
+    fld('srcIp','ip',sIpS,[[p+12,4]],`Bajty ${p+12}–${p+15} (začátek IP hlavičky ${p} + 12).`,'IPv4 adresa = 4 bajty. Každý převeď z hex na desítkové (první číslice × 16 + druhá) a odděl tečkou.',`${hx(p+12,4)}: ${ip4x(p+12)} → <b>${sIpS}</b>`);
+    fld('dstIp','ip',dIpS,[[p+16,4]],`Bajty ${p+16}–${p+19} (hned za zdrojovou IP).`,'Cílová IP je hned za zdrojovou, zase 4 bajty. Je to adresa koncového cíle, ne brány.',`${hx(p+16,4)}: ${ip4x(p+16)} → <b>${dIpS}</b>`);
+    l4name={1:'ICMP',6:'TCP',17:'UDP',58:'ICMPv6'}[proto]||'není';
+    fld('l4','select',l4name,[[p+9,1]],`Bajt ${p+9} (začátek IP hlavičky + 9).`,'Pole Protocol v IPv4 hlavičce: 01 = ICMP, 06 = TCP, 11 = UDP (hex 11 = 17).',`Bajt ${p+9} = ${hx(p+9,1)} → ${l4name}.`);
+  }else if(et===0x86dd){
+    isV6=true;let nh=g(p+6);nhPos=p+6;let q=p+40;const plen=w(p+4);endIp=Math.min(N,p+40+plen);const exts=[];
+    while([0,43,60,44].includes(nh)&&q<endIp){exts.push(nh);nhPos=q;const len=nh===44?8:(g(q+1)+1)*8;nh=g(q);q+=len;}
+    proto=nh;l4=q;
+    const s6=fmt6(b.slice(p+8,p+24)),d6=fmt6(b.slice(p+24,p+40));sIpS=s6;dIpS=d6;
+    layers.push({n:'IPv6',s:p,e:p+40});if(exts.length)layers.push({n:'IPv6 rozšíření',s:p+40,e:q});
+    const extName={0:'Hop-by-Hop',43:'Routing',60:'Destination Options',44:'Fragment'};
+    ipHdrInfo=`IPv6 hlavička má vždy 40 B, takže konec je na ${p}+40 = ${p+40}.`+(exts.length?` Next Header ale ukazuje na rozšiřující hlavičku (${exts.map(e=>extName[e]).join(', ')}), takže transport začíná až na <b>${l4}</b>.`:` Transport začíná na <b>${l4}</b>.`);
+    fld('srcIp','ip',s6,[[p+8,16]],`Bajty ${p+8}–${p+23}.`,'IPv6 adresa = 16 bajtů. Ber je po dvou (skupina), úvodní nuly vynech a nejdelší řadu nulových skupin nahraď ::.',`${hx(p+8,16)} → <b>${s6}</b>`);
+    fld('dstIp','ip',d6,[[p+24,16]],`Bajty ${p+24}–${p+39}.`,'Cílová IPv6 je hned za zdrojovou, zase 16 bajtů.',`${hx(p+24,16)} → <b>${d6}</b>`+(d6.startsWith('ff02::1:ff')?' (solicited-node multicast, typické pro Neighbor Solicitation).':''));
+    l4name={6:'TCP',17:'UDP',58:'ICMPv6',1:'ICMP'}[proto]||'není';
+    fld('l4','select',l4name,[[nhPos,1]],`Bajt ${nhPos} (${exts.length?'Next Header poslední rozšiřující hlavičky':'Next Header v IPv6 hlavičce'}).`,'Next Header: 06 = TCP, 11 = UDP, 3a = ICMPv6. Hodnoty 00, 3c, 2b jsou rozšiřující hlavičky, takže je přeskoč a čti jejich Next Header.',`Bajt ${nhPos} = ${hx(nhPos,1)} → ${l4name}.`+(exts.length?' (Bajt 20 ukazoval na rozšiřující hlavičku, proto se čte až další Next Header.)':''));
+  }else if(et===0x806){
+    isArp=true;sIpS=ip4(p+14);dIpS=ip4(p+24);const op=w(p+6);
+    layers.push({n:'ARP',s:p,e:p+28});
+    fld('srcIp','ip',sIpS,[[p+14,4]],`ARP začíná na ${p}. Sender IP = bajty ${p+14}–${p+17}.`,'Pořadí v ARP: typy (4 B), délky (2 B), operace (2 B), Sender MAC (6 B), Sender IP (4 B), Target MAC (6 B), Target IP (4 B).',`${hx(p+14,4)}: ${ip4x(p+14)} → <b>${sIpS}</b> (Sender IP)`);
+    fld('dstIp','ip',dIpS,[[p+24,4]],`Target IP = bajty ${p+24}–${p+27}.`,'Target IP je poslední pole ARP: za Sender IP (4 B) a Target MAC (6 B).',`${hx(p+24,4)}: ${ip4x(p+24)} → <b>${dIpS}</b> (Target IP)`);
+    fld('l4','select','není',[],'ARP nemá IP hlavičku.','ARP leží přímo v Ethernetu, nad IP nic není. Odpověď: není.','ARP není IP paket, takže protokol po IP hlavičce: <b>není</b>.');
+    msg=op===1?'ARP request':op===2?'ARP reply':'není';msgR=[[p+6,2]];
+    msgHow='V ARP je na pozici 6–7 od začátku ARP pole Operace: 00 01 = request (kdo má tuhle IP?), 00 02 = reply (já, tady je moje MAC).';
+    msgEx=`Operace ${hx(p+6,2)} → ${msg}.`+(op===1?' Target MAC jsou nuly, protože ji odesílatel teprve hledá.':'');
+    summ=`${msg}: ${op===1?`kdo má ${dIpS}? ptá se ${sIpS}`:`${sIpS} je na ${mac(p+8)}`}`;
+  }
+  // transport
+  const noPort=(why)=>{fld('sport','port','není',[],why,why,why);fld('dport','port','není',[],why,why,why);};
+  if(isArp)noPort('ARP nemá transportní vrstvu, takže porty nejsou. Odpověď: není.');
+  else if(proto===6||proto===17){
+    sport=w(l4);dport=w(l4+2);
+    const sv=x=>SERV[x]?` = ${SERV[x]}`:(x>=1024?' (náhodný port klienta)':'');
+    fld('sport','port',String(sport),[[l4,2]],`Bajty ${l4}–${l4+1} (první 2 bajty ${proto===6?'TCP':'UDP'} hlavičky).`,`Transport začíná hned za IP hlavičkou. ${ipHdrInfo} Port = 2 bajty: první × 256 + druhý.`,`${wdec(g(l4),g(l4+1))}${sv(sport)}. ${ipHdrInfo}`);
+    fld('dport','port',String(dport),[[l4+2,2]],`Bajty ${l4+2}–${l4+3} (hned za zdrojovým portem).`,'Cílový port jsou další 2 bajty po zdrojovém portu. Zase první × 256 + druhý.',`${wdec(g(l4+2),g(l4+3))}${sv(dport)}.`);
+    if(proto===6){const doff=(g(l4+12)>>4)*4;pay=l4+doff;layers.push({n:'TCP',s:l4,e:pay});}
+    else{pay=l4+8;layers.push({n:'UDP',s:l4,e:pay});}
+    payEnd=endIp;if(pay<payEnd)layers.push({n:'Data',s:pay,e:payEnd});
+  }else if(proto===1||proto===58){
+    noPort(`${proto===1?'ICMP':'ICMPv6'} nemá porty (porty mají jen TCP a UDP). Odpověď: není.`);
+    layers.push({n:proto===1?'ICMP':'ICMPv6',s:l4,e:endIp});
+  }else if(!isArp&&l4!=null){noPort('Neznámý transportní protokol, porty nelze přečíst.');}
+  else noPort('Neznámý typ rámce.');
+  if(endIp<N)layers.push({n:'Výplň',s:endIp,e:N});
+
+  // message
+  if(!isArp&&l4!=null){
+    if(proto===1){const t=g(l4);msg=t===8?'ICMP Echo Request':t===0?'ICMP Echo Reply':'není';msgR=[[l4,1]];
+      msgHow='ICMP: první bajt ICMP hlavičky je Typ. 08 = Echo Request (ping), 00 = Echo Reply (odpověď na ping).';msgEx=`Typ ${hx(l4,1)} na pozici ${l4} → ${msg}.`;}
+    else if(proto===58){const t=g(l4);msg={128:'ICMP Echo Request',129:'ICMP Echo Reply',135:'Neighbor Solicitation',136:'Neighbor Advertisement'}[t]||'není';msgR=[[l4,1]];
+      msgHow='ICMPv6: první bajt je Typ. 80 (128) = Echo Request, 81 (129) = Echo Reply, 87 (135) = Neighbor Solicitation, 88 (136) = Neighbor Advertisement.';msgEx=`Typ ${hx(l4,1)} = ${g(l4)} → ${msg}.`;}
+    else if(proto===17||proto===6){
+      const plen=Math.max(0,payEnd-pay);
+      if(sport===53||dport===53){
+        if(proto===6&&plen===0){/* handshake on 53 */}
+        else{const d=proto===6?pay+2:pay;const fl=g(d+2);const qr=fl>>7;msg=qr?'DNS odpověď':'DNS požadavek';msgR=[[d+2,2]];
+          const name=(()=>{const parts=[];let i=d+12,guard=0;while(g(i)&&guard++<20&&g(i)<0xc0){const L=g(i);parts.push(String.fromCharCode(...b.slice(i+1,i+1+L)));i+=L+1;}return parts.join('.');})();
+          msgHow=`Port 53 = DNS. ${proto===6?'U DNS přes TCP jsou před zprávou ještě 2 bajty délky. ':''}Ve DNS hlavičce jsou po ID (2 B) příznaky. Rozhoduje první bit: bajt začínající 0–7 = dotaz (QR=0), 8–f = odpověď (QR=1).`;
+          msgEx=`Port 53 → DNS. Příznaky na ${d+2}–${d+3}: ${hx(d+2,2)}. ${qr?'Začíná 8, takže QR=1 → odpověď.':'Začíná 0, takže QR=0 → dotaz.'}`+(name?` Ptá se na <b>${esc(name)}</b>.`:'')+(sport===53?' Taky zdrojový port 53 = posílá to server.':'');
+          summ=`${msg}${name?' · '+name:''}`;}
+      }
+      if(msg==='není'&&proto===6&&plen>0&&([80,8080].includes(sport)||[80,8080].includes(dport)||g(pay)===0x48||g(pay)===0x47||g(pay)===0x50)){
+        const t=String.fromCharCode(...b.slice(pay,Math.min(payEnd,pay+40)));const first=t.split('\r\n')[0];
+        msg=t.startsWith('HTTP/')?'HTTP odpověď':'HTTP požadavek';msgR=[[pay,Math.min(4,plen)]];
+        msgHow='Port 80 = HTTP. Data za TCP hlavičkou jsou čitelný text (ASCII). 47 45 54 = „GET“, 50 4f 53 54 = „POST“ → požadavek. 48 54 54 50 = „HTTP“ → odpověď.';
+        msgEx=`Data od pozice ${pay}: ${hx(pay,4)} = „${esc(t.slice(0,4))}“ → ${msg}. První řádek: <code>${esc(first)}</code>.`;summ=`${msg} · ${esc(first)}`;
+      }
+      if(msg==='není'&&proto===6){const fl=g(l4+13);const fpos=l4+13;msgR=[[fpos,1]];
+        msg=(fl&0x12)===0x12?'TCP SYN + ACK':(fl&0x02)?'TCP SYN':(fl&0x10)?'TCP ACK':'není';
+        const names=[[0x20,'URG'],[0x10,'ACK'],[0x08,'PSH'],[0x04,'RST'],[0x02,'SYN'],[0x01,'FIN']].filter(([m])=>fl&m).map(x=>x[1]).join(' + ');
+        msgHow='TCP bez dat: rozhodují příznaky v bajtu 13 TCP hlavičky. 02 = SYN, 12 = SYN + ACK, 10 = ACK.';
+        msgEx=`Bajt ${fpos} (TCP + 13) = ${hx(fpos,1)} → ${names||'žádné'}. ${msg==='TCP SYN'?'1. krok navázání spojení.':msg==='TCP SYN + ACK'?'2. krok navázání spojení (odpověď serveru).':msg==='TCP ACK'?'Potvrzení, bez dat (např. 3. krok navázání spojení).':''}`;}
+    }
+  }
+  if(!msgHow){msgHow='Zprávu urči podle protokolu: ARP operace, ICMP typ, port 53 = DNS, port 80 = HTTP, jinak TCP příznaky.';}
+  fld('msg','select',msg,msgR,'Kde: '+(msgR.length?`bajty ${msgR[0][0]}${msgR[0][1]>1?'–'+(msgR[0][0]+msgR[0][1]-1):''}.`:'—'),msgHow,msgEx||'—');
+  if(!summ)summ=msg;
+
+  // gateway
+  let gwUsed=false,gwWhy='';const P=ctx.prefix;
+  if(isArp){gwWhy='ARP nikdy neopouští místní síť, takže se brána nepoužije.';}
+  else if(isV6){
+    const d=dIpS.toLowerCase();const sB=b.slice(p+8,p+16),dB=b.slice(p+24,p+32);
+    if(d.startsWith('ff'))gwWhy=`Cíl ${dIpS} je multicast, zůstává na lince. Brána se nepoužije.`;
+    else if(/^fe[89ab]/.test(d))gwWhy=`Cíl ${dIpS} je link-local (fe80::/10), platí jen na místní lince. Brána se nepoužije.`;
+    else if(eqA(sB,dB))gwWhy=`Zdroj i cíl mají stejný /64 prefix (${fmt6([...sB,0,0,0,0,0,0,0,0])}/64), takže rámec jde přímo. Brána se nepoužije.`;
+    else{gwUsed=true;gwWhy=`Cíl ${dIpS} nemá stejný /64 prefix jako zdroj ${sIpS}, takže rámec jde na výchozí bránu.`;}
+  }else if(sIpS){
+    const S=sIpS.split('.').map(Number),D=dIpS.split('.').map(Number);
+    const m=P===0?0:(0xffffffff<<(32-P))>>>0;const ns=u32((n4(S)&m)>>>0).join('.'),nd=u32((n4(D)&m)>>>0).join('.');
+    if(dIpS==='255.255.255.255')gwWhy='Cíl je broadcast 255.255.255.255, zůstává v místní síti.';
+    else if(ns===nd)gwWhy=`Zdroj ${sIpS}/${P} je v síti ${ns}/${P}. Cíl ${dIpS} je ve stejné síti, takže rámec jde přímo sousedovi a cílová MAC je MAC cíle.`;
+    else{gwUsed=true;gwWhy=`Zdroj ${sIpS}/${P} je v síti ${ns}/${P}, ale cíl ${dIpS} je v síti ${nd}/${P}, tedy jinde. Rámec jde na výchozí bránu.`;}
+  }
+  if(gwUsed){
+    fld('gwMac','mac',dm,[[0,6]],`Nejdřív rozhodni, jestli se brána použila. Pak koukni na bajty 0–5.`,`Porovnej sítě zdrojové a cílové IP (prefix /${P}). Jiná síť → rámec jde přes bránu a cílová MAC rámce je MAC brány.`,`${gwWhy} <b>Cílová MAC rámce ${dm} je MAC brány.</b> Cílová IP v paketu ale zůstává adresa koncového cíle.`);
+    const g=ctx.gw;
+    if(g)fld('gwIp','ip',g,[],'Ze zadání.','IP brány v rámci nikde není. Tady ji ale máš v zadání.',`Brána se použila a zadání ji uvádí: <b>${esc(g)}</b>. V rámci samotném ji nenajdeš, cílová IP je koncový cíl.`);
+    else fld('gwIp','text','nelze určit',[],'Nikde v rámci.','IP brány v rámci nikde není (cílová IP je koncový cíl). Zjistíš ji jen ze zadání, ze směrovací tabulky.','Brána se použila, ale její IP v rámci není (cílová IP je koncový cíl) a zadání ji neuvádí. Odpověď: <b>nelze určit</b>.');
+  }else{
+    fld('gwMac','mac','není',[],'Nejdřív porovnej sítě zdroje a cíle.',`Porovnej sítě zdrojové a cílové IP (prefix /${P}). Stejná síť → rámec jde přímo, brána: není.`,`${gwWhy} MAC brány: <b>není</b>.`);
+    fld('gwIp','text','není',[],'Brána se nepoužila.','Když se brána nepoužila, její IP tu nehraje roli: není (uznává se i „nelze určit“).',`${gwWhy} Odpověď: <b>není</b> (uznává se i „nelze určit“).`,['#unk']);
+  }
+  return{F,layers,summ:`${ft} → ${ep}${!isArp&&l4name!=='není'?' → '+l4name:''} → ${summ}${sIpS?` · ${sIpS} → ${dIpS}`:''}${gwUsed?' (přes bránu)':''}`};
+}
+
+/* ---------- state ---------- */
+const S={tab:'guide',bytes:[],ctx:{},f:null,step:0,ans:{},tries:{},hl:{},sel:null,hover:null,checked:false,timerEnd:0,custom:false,examHover:null};
+const settings=Object.assign({kind:'random',ipv:'4',struct:'basic',dnst:'udp',level:'1',timer:'0'},store.get('settings',{}));
+let stats=store.get('stats',{});
+
+function newFrame(fr){
+  if(!fr){fr=generate(settings);S.custom=false;}
+  S.bytes=fr.bytes;S.ctx=fr.ctx;S.f=decode(S.bytes,S.ctx);
+  S.step=0;S.ans={};S.tries={};S.hl={};S.sel=null;S.checked=false;S.examHover=null;
+  const lv=+settings.level;STEPS.forEach(k=>S.hl[k]=lv===1?2:lv===2?1:0);
+  S.timerEnd=(S.tab==='exam'&&+settings.timer)?Date.now()+(+settings.timer)*60000:0;
+  renderAll();
+}
+function record(key,ok){const s=stats[key]||{n:0,ok:0};s.n++;if(ok)s.ok++;stats[key]=s;store.set('stats',stats);}
+
+/* ---------- dump ---------- */
+function colorMap(){
+  const m={};const put=(key,cls)=>{const fd=S.f.F[key];if(!fd)return;fd.ranges.forEach(([s,l])=>{for(let i=s;i<s+l;i++){m[i]=m[i]||{};if(cls==='c')m[i].c=COLOR[key];else m[i].cur=true;}});};
+  if(S.tab==='guide'){
+    STEPS.forEach(k=>{if(S.ans[k]&&(S.ans[k].st==='ok'||S.ans[k].st==='rev'))put(k,'c');});
+    const k=STEPS[S.step];if(k&&S.hl[k]>=2&&!(S.ans[k]&&S.ans[k].st))put(k,'cur');
+  }else if(S.checked){SHEET.forEach(k=>put(k,'c'));if(S.examHover)put(S.examHover,'cur');}
+  return m;
+}
+function renderDump(){
+  const b=S.bytes,m=colorMap();const lastData=S.f.layers.find(l=>l.n==='Výplň');
+  let h='<div></div>';for(let c=0;c<16;c++)h+=`<div class="oh${c===8?' gap':''}">${c}</div>`;
+  for(let r=0;r<b.length;r+=16){h+=`<div class="ro">${r}</div>`;for(let c=0;c<16;c++){const i=r+c;if(i>=b.length){h+='<div></div>';continue;}
+    const x=m[i]||{};let cls='b';if(x.c)cls+=' c';if(x.cur)cls+=' cur';if(S.sel&&i>=Math.min(S.sel.a,S.sel.b)&&i<=Math.max(S.sel.a,S.sel.b))cls+=' sel';
+    if(lastData&&i>=lastData.s&&!x.c)cls+=' pad';if(c===8)cls+=' gap';
+    h+=`<div class="${cls}" data-i="${i}"${x.c?` style="--fc:var(${x.c})"`:''}>${H(b[i])}</div>`;}}
+  $('#dump').innerHTML=h;
+  $('#f-meta').textContent=`${b.length} B · 16 bajtů na řádek · pozice od 0 (dec)`;
+  const c=S.ctx;
+  $('#f-ctx').innerHTML=`Odchyt u odesílatele. Délka místního prefixu: <b>/${c.prefix}</b>. ${c.gw?`Směrovací tabulka: výchozí brána <b>${esc(c.gw)}</b>.`:'Směrovací tabulka v zadání není.'}${S.custom?' <span class="pill">vlastní rámec</span>':''}`;
+  renderInfo();
+  const showLayers=(S.tab==='guide'&&S.step>=STEPS.length)||(S.tab==='exam'&&S.checked);
+  const L=$('#layers');L.hidden=!showLayers;
+  if(showLayers)L.innerHTML=S.f.layers.map(l=>`<div style="flex:${Math.max(l.e-l.s,4)}"><b>${l.n}</b><span>${l.s}–${l.e-1} · ${l.e-l.s} B</span></div>`).join('');
+}
+function rangeInfo(a,z){
+  const b=S.bytes.slice(a,z+1),n=b.length;const hexs=b.map(H).join(' ');
+  const asc=b.map(x=>x>=32&&x<127?String.fromCharCode(x):'·').join('');
+  let parts=[`<b>Výběr ${a}–${z}</b> (${n} B): <code>${hexs.length>60?hexs.slice(0,60)+'…':hexs}</code>`];
+  if(n===1)parts.push(bdec(b[0]));
+  if(n===2)parts.push(wdec(b[0],b[1])+(SERV[b[0]*256+b[1]]?` (${SERV[b[0]*256+b[1]]})`:''));
+  if(n===4)parts.push(`jako IPv4: <b>${b.join('.')}</b>`);
+  if(n===6)parts.push(`jako MAC: <b>${b.map(H).join(':')}</b>`);
+  if(n===16)parts.push(`jako IPv6: <b>${fmt6(b)}</b>`);
+  if(n<=4&&n>2)parts.push(`číslo: ${b.reduce((s,x)=>s*256+x,0)}`);
+  parts.push(`ASCII: <code>${esc(asc.slice(0,40))}</code>`);
+  return parts.join(' · ');
+}
+function renderInfo(){
+  const el=$('#info');
+  if(S.hover!=null&&!(S.sel&&S.sel.a!==S.sel.b)){const i=S.hover,x=S.bytes[i];el.innerHTML=`<b>Pozice ${i}</b> · ${bdec(x)} · ASCII ${x>=32&&x<127?`<code>${esc(String.fromCharCode(x))}</code>`:'—'} · klikni na bajt a pak na další pro převod celého výběru`;return;}
+  if(S.sel){el.innerHTML=rangeInfo(Math.min(S.sel.a,S.sel.b),Math.max(S.sel.a,S.sel.b))+' · <button class="btn small ghost" id="sel-clear">zrušit výběr</button>';return;}
+  el.innerHTML='Najeď na bajt pro převod do desítkové soustavy. Klikni na první a pak na poslední bajt pole: ukáže se číslo, IP, MAC i ASCII.';
+}
+$('#dump').addEventListener('mouseover',e=>{const t=e.target.closest('.b');if(!t)return;S.hover=+t.dataset.i;renderInfo();});
+$('#dump').addEventListener('mouseleave',()=>{S.hover=null;renderInfo();});
+$('#dump').addEventListener('click',e=>{const t=e.target.closest('.b');if(!t)return;const i=+t.dataset.i;
+  if(!S.sel||S.sel.done)S.sel={a:i,b:i,done:false};else{S.sel.b=i;S.sel.done=true;}
+  S.hover=null;renderDump();});
+$('#info').addEventListener('click',e=>{if(e.target.id==='sel-clear'){S.sel=null;renderDump();}});
+
+/* ---------- sheet ---------- */
+function renderSheet(){
+  const cur=STEPS[S.step];
+  $('#sheet').innerHTML=SHEET.map(k=>{const a=S.ans[k];const done=a&&(a.st==='ok'||a.st==='rev');
+    return `<div class="row${k===cur?' now':''}${a&&a.st==='rev'?' rev':''}"><div class="lab"><span class="dot" style="--fc:var(${COLOR[k]})"></span>${LABEL[k]}</div><div class="val">${done?esc(S.f.F[k].answer):'…'}</div></div>`;}).join('');
+}
+
+/* ---------- guide ---------- */
+const PH={mac:'např. 02:a3:da:7c:0d:9f',ip:'např. 192.168.1.10',port:'např. 53 (desítkově)',text:'např. nelze určit'};
+function wrongMsg(fd,n,raw){
+  if(n.startsWith('bad:')){
+    const s=n.slice(4);
+    if(fd.kind==='port')return /^(0x)?[0-9a-f]+$/.test(s.replace(/\s/g,''))?'Tohle vypadá jako hex. Port zapiš desítkově: první bajt × 256 + druhý.':'Port je celé číslo 0–65535.';
+    if(fd.kind==='ip'&&/^[0-9a-f ]{8,11}$/.test(s))return'Tohle vypadá jako hex. Každý bajt převeď na desítkové číslo a odděl tečkou.';
+    if(fd.kind==='ip')return'IPv4 zapiš jako 4 čísla 0–255 oddělená tečkou (IPv6 s dvojtečkami).';
+    if(fd.kind==='mac')return'MAC má 6 bajtů = 12 hex číslic, např. 02:a3:da:7c:0d:9f.';
+  }
+  for(const k of SHEET){if(k===fd.key)continue;const o=S.f.F[k];if(o.kind===fd.kind&&o.accept.has(n)&&!n.startsWith('#'))return`To je ${LABEL[k].toLowerCase()}. Hledáš jiné pole.`;}
+  if(fd.accept.has('#none')&&!n.startsWith('#'))return'Zamysli se, jestli tohle pole v tomhle rámci vůbec existuje nebo hraje roli.';
+  if(n==='#none'||n==='#unk')return'Tohle pole v rámci je. Hledej dál.';
+  return'Není to ono. Mrkni na nápovědu.';
+}
+function renderGuide(){
+  const P=$('#panel');
+  const prog=`<div class="prog">${STEPS.map((k,i)=>{const a=S.ans[k];return`<i class="${a&&a.st==='ok'?'ok':a&&a.st==='rev'?'rev':i===S.step?'now':''}"></i>`;}).join('')}</div>`;
+  if(S.step>=STEPS.length){
+    const first=STEPS.filter(k=>S.ans[k]&&S.ans[k].first).length;
+    P.innerHTML=`${prog}<div class="stepNo">Hotovo</div><h2>Rámec rozluštěn</h2>
+      <div class="fb ok"><strong>Napoprvé správně: ${first} z ${STEPS.length}</strong>${esc(S.f.summ)}</div>
+      <p class="why">Pod hex výpisem teď vidíš, kde začíná a končí každá vrstva. Zkus další rámec, nebo přepni na <b>Zkoušku nanečisto</b>, kde vyplňuješ všechno sám.</p>
+      <div class="actions"><button class="btn primary" id="g-next-frame">Další rámec ↻</button><button class="btn" id="g-to-exam">Tenhle typ ve zkoušce</button></div>`;
+    $('#g-next-frame').onclick=()=>newFrame();$('#g-to-exam').onclick=()=>{setTab('exam');newFrame();};
+    $('#g-next-frame').focus();return;
+  }
+  const k=STEPS[S.step],fd=S.f.F[k],a=S.ans[k],hl=S.hl[k],t=S.tries[k]||0;
+  let hint='';
+  if(hl>=1)hint+=`<p>${fd.how}</p>`;
+  if(hl>=2)hint+=`<p>📍 <b>${fd.where}</b></p>`;
+  const hintBtns=hl<2&&!(a&&a.st)?`<button class="btn small ghost" id="g-hint">${hl===0?'Nápověda: jak na to':'Ukaž kde hledat'}</button>`:'';
+  let input='';
+  if(!(a&&a.st)){
+    if(fd.kind==='select')input=`<div class="opts" id="g-opts">${OPTS[k].map(o=>`<button data-v="${esc(o)}" class="${a&&a.wrongs&&a.wrongs.includes(o)?'wrong':''}">${esc(o)}</button>`).join('')}</div>`;
+    else input=`<div class="ansRow"><input type="text" id="g-in" autocomplete="off" spellcheck="false" placeholder="${PH[fd.kind]}"><button class="btn primary" id="g-check">Zkontrolovat</button></div>
+      <div class="quick">Rychle vložit: <button class="btn small" data-q="není">není</button>${k==='gwIp'||k==='gwMac'?'<button class="btn small" data-q="nelze určit">nelze určit</button>':''}</div>`;
+  }
+  let fb='';
+  if(a&&a.st==='ok')fb=`<div class="fb ok"><strong>Správně: ${esc(fd.answer)}</strong>${fd.explain}</div>`;
+  else if(a&&a.st==='rev')fb=`<div class="fb bad"><strong>Odpověď: ${esc(fd.answer)}</strong>${fd.explain}</div>`;
+  else if(a&&a.err)fb=`<div class="fb bad"><strong>Ještě ne</strong>${esc(a.err)}</div>`;
+  const actions=a&&a.st?`<div class="actions"><button class="btn primary" id="g-next">${S.step===STEPS.length-1?'Dokončit':'Další krok →'}</button></div>`
+    :`<div class="actions">${hintBtns}${t>=2?'<button class="btn small ghost" id="g-reveal">Ukázat odpověď</button>':''}<button class="btn small ghost" id="g-skip">Přeskočit</button></div>`;
+  P.innerHTML=`${prog}<div class="stepNo">Krok ${S.step+1} z ${STEPS.length}</div><h2>${LABEL[k]}</h2>
+    ${hint?`<div class="hint">${hint}</div>`:''}${input}${fb}${actions}`;
+  const inp=$('#g-in');
+  if(inp){inp.focus();inp.addEventListener('keydown',e=>{if(e.key==='Enter')checkGuide(inp.value);});$('#g-check').onclick=()=>checkGuide(inp.value);
+    P.querySelectorAll('[data-q]').forEach(bt=>bt.onclick=()=>{inp.value=bt.dataset.q;checkGuide(inp.value);});}
+  P.querySelectorAll('#g-opts button').forEach(bt=>bt.onclick=()=>checkGuide(bt.dataset.v));
+  if($('#g-hint'))$('#g-hint').onclick=()=>{S.hl[k]++;renderGuide();renderDump();};
+  if($('#g-reveal'))$('#g-reveal').onclick=()=>{S.ans[k]={st:'rev'};renderAllGuide();};
+  if($('#g-skip'))$('#g-skip').onclick=()=>{if(!S.tries[k])record(k,false);S.ans[k]={st:'rev'};renderAllGuide();};
+  if($('#g-next')){const nb=$('#g-next');nb.onclick=()=>{S.step++;renderAllGuide();};if(!inp)nb.focus();}
+}
+function checkGuide(val){
+  const k=STEPS[S.step],fd=S.f.F[k];if(!String(val).trim())return;
+  const n=norm(fd.kind,val);const t=S.tries[k]||0;const prev=S.ans[k]||{};
+  if(fd.accept.has(n)){if(t===0)record(k,true);S.ans[k]={st:'ok',first:t===0};}
+  else{if(t===0)record(k,false);S.tries[k]=t+1;S.hl[k]=Math.max(S.hl[k],S.tries[k]>=2?2:1);
+    S.ans[k]={err:wrongMsg(fd,n,val),wrongs:[...(prev.wrongs||[]),val]};}
+  renderAllGuide();
+}
+function renderAllGuide(){renderGuide();renderSheet();renderDump();}
+
+/* ---------- exam ---------- */
+let examVals={};
+function renderExam(){
+  const P=$('#panel');const F=S.f.F;
+  const filled=SHEET.filter(k=>(examVals[k]||'').trim()).length;
+  let score='';
+  if(S.checked){const ok=SHEET.filter(k=>F[k].accept.has(norm(F[k].kind,examVals[k]||''))).length;score=`<div class="fb ${ok>=10?'ok':'bad'}"><strong>${ok} / ${SHEET.length} správně</strong>${esc(S.f.summ)}</div>`;}
+  P.innerHTML=`<div class="eyebrow">Tvůj rozbor <span class="pill" id="ex-filled">${filled} / ${SHEET.length} vyplněno</span><span class="spacer"></span><span class="timer" id="ex-timer"></span></div>
+    <div class="exam">${SHEET.map((k,i)=>{const fd=F[k];const v=examVals[k]||'';let cls='',res='';
+      if(S.checked){const ok=fd.accept.has(norm(fd.kind,v));cls=ok?'ok':'bad';res=`<div class="res">${ok?'<b class="okc">Správně.</b>':`<b class="badc">Správně je: ${esc(fd.answer)}.</b>`} ${fd.explain}</div>`;}
+      const id='ex-'+k;
+      const ctrl=fd.kind==='select'?`<select id="${id}" data-k="${k}"${S.checked?' disabled':''}><option value="">Vyber…</option>${OPTS[k].map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select>`
+        :`<input type="text" id="${id}" data-k="${k}" value="${esc(v)}" autocomplete="off" spellcheck="false" placeholder="${PH[fd.kind]}"${S.checked?' readonly':''}>`;
+      return`<div class="ex ${cls}" data-k="${k}"><label for="${id}"><span class="dot" style="--fc:var(${COLOR[k]})"></span><span class="n">${String(i+1).padStart(2,'0')}</span>${LABEL[k]}</label>${ctrl}${res}</div>`;}).join('')}</div>
+    ${score}
+    <div class="actions">${S.checked?'<button class="btn primary" id="ex-new">Nový rámec ↻</button>':'<button class="btn primary" id="ex-check">Zkontrolovat</button><button class="btn ghost" id="ex-show">Vzdát se a ukázat řešení</button>'}</div>
+    <p class="why">${S.checked?'Najeď myší na řádek: ve výpisu se orámují jeho bajty.':'Enter v posledním poli = kontrola. Pole, které v rámci není: napiš <code>není</code>. Co ze zadání nejde zjistit: <code>nelze určit</code>.'}</p>`;
+  P.querySelectorAll('.exam input,.exam select').forEach(el=>{
+    el.addEventListener('input',()=>{examVals[el.dataset.k]=el.value;$('#ex-filled').textContent=`${SHEET.filter(k=>(examVals[k]||'').trim()).length} / ${SHEET.length} vyplněno`;});
+    el.addEventListener('keydown',e=>{if(e.key==='Enter'&&!S.checked){e.preventDefault();const all=[...P.querySelectorAll('.exam input,.exam select')];const i=all.indexOf(el);if(i<all.length-1)all[i+1].focus();else checkExam();}});});
+  P.querySelectorAll('.ex').forEach(r=>{r.addEventListener('mouseenter',()=>{if(S.checked){S.examHover=r.dataset.k;renderDump();}});r.addEventListener('mouseleave',()=>{if(S.checked){S.examHover=null;renderDump();}});});
+  if($('#ex-check'))$('#ex-check').onclick=checkExam;
+  if($('#ex-show'))$('#ex-show').onclick=()=>{SHEET.forEach(k=>record(k,false));S.checked=true;S.timerEnd=0;renderAllExam();};
+  if($('#ex-new'))$('#ex-new').onclick=()=>{examVals={};newFrame();};
+  tickTimer();
+}
+function checkExam(){const F=S.f.F;SHEET.forEach(k=>record(k,F[k].accept.has(norm(F[k].kind,examVals[k]||''))));S.checked=true;S.timerEnd=0;renderAllExam();}
+function renderAllExam(){renderExam();renderDump();renderStats();}
+function tickTimer(){const el=$('#ex-timer');if(!el)return;if(!S.timerEnd||S.tab!=='exam'){el.textContent='';return;}
+  const left=Math.max(0,S.timerEnd-Date.now());const s=Math.ceil(left/1000);el.textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;el.classList.toggle('low',s<=60);
+  if(left<=0&&!S.checked)checkExam();}
+setInterval(tickTimer,500);
+
+/* ---------- stats ---------- */
+function renderStats(){
+  const rows=SHEET.map(k=>({k,s:stats[k]||{n:0,ok:0}})).filter(r=>r.s.n>0).sort((a,b)=>a.s.ok/a.s.n-b.s.ok/b.s.n);
+  const tot=rows.reduce((s,r)=>s+r.s.n,0);
+  $('#st-total').textContent=tot?`${tot} odpovědí`:'zatím nic';
+  $('#stats').innerHTML=rows.length?rows.slice(0,6).map(r=>{const pct=Math.round(100*r.s.ok/r.s.n);return`<div class="s"><span>${LABEL[r.k]}</span><span class="bar"><i style="width:${pct}%"></i></span><span class="mono">${pct} %</span></div>`;}).join('')
+    :'<span class="why">Po pár rámcích tu uvidíš pole, ve kterých chybuješ nejčastěji (počítá se první pokus). Ukládá se jen v tomhle prohlížeči.</span>';
+}
+let resetArm=false;
+$('#st-reset').onclick=()=>{if(!resetArm){resetArm=true;$('#st-confirm').textContent='Klikni znovu pro potvrzení.';setTimeout(()=>{resetArm=false;$('#st-confirm').textContent='';},3000);return;}
+  stats={};store.set('stats',stats);resetArm=false;$('#st-confirm').textContent='Smazáno.';renderStats();};
+
+/* ---------- tabs & controls ---------- */
+function setTab(t){
+  S.tab=t;document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t?'true':'false'));
+  $('#workbench').hidden=!(t==='guide'||t==='exam');$('#blitzView').hidden=t!=='blitz';$('#cheatView').hidden=t!=='cheat';
+  $('#lvl-wrap').hidden=t!=='guide';$('#timer-wrap').hidden=t!=='exam';$('#sheetCard').hidden=t!=='guide';
+  if(t==='exam'&&!S.checked&&+settings.timer&&!S.timerEnd)S.timerEnd=Date.now()+(+settings.timer)*60000;
+  if(t==='guide'||t==='exam')renderAll();
+  store.set('tab',t);
+}
+function renderAll(){if(S.tab==='guide'){renderGuide();renderSheet();}else if(S.tab==='exam')renderExam();renderDump();renderStats();}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+$('#opt-kind').innerHTML='<option value="random">Náhodný typ (bez prozrazení)</option>'+KINDS.map(k=>`<option value="${k}">${KL[k]}</option>`).join('');
+const bind={kind:'#opt-kind',ipv:'#opt-ipv',struct:'#opt-struct',dnst:'#opt-dnst',level:'#opt-level',timer:'#opt-timer'};
+Object.entries(bind).forEach(([k,sel])=>{const el=$(sel);el.value=settings[k];el.onchange=()=>{settings[k]=el.value;store.set('settings',settings);
+  if(k==='level'){const lv=+el.value;STEPS.forEach(s=>{if(!(S.ans[s]&&S.ans[s].st))S.hl[s]=lv===1?2:lv===2?1:0;});renderAll();}
+  else if(k==='timer'){S.timerEnd=(+el.value&&!S.checked)?Date.now()+(+el.value)*60000:0;tickTimer();}
+  else{examVals={};newFrame();}};});
+$('#btn-new').onclick=()=>{examVals={};newFrame();};
+document.addEventListener('keydown',e=>{if(e.altKey&&(e.key==='n'||e.key==='N')&&(S.tab==='guide'||S.tab==='exam')){e.preventDefault();examVals={};newFrame();}});
+
+/* custom frame */
+function parseHex(txt){
+  const out=[];
+  txt.split(/\r?\n/).forEach(line=>{
+    let l=line.replace(/^\s*(0x)?[0-9a-fA-F]{4,8}[:\s]\s/,'');
+    const toks=l.trim().split(/\s+/).filter(Boolean);
+    for(const t of toks){if(/^[0-9a-fA-F]{2}$/.test(t))out.push(parseInt(t,16));
+      else if(/^([0-9a-fA-F]{2})+$/.test(t)&&t.length>2){for(let i=0;i<t.length;i+=2)out.push(parseInt(t.slice(i,i+2),16));}
+      else break;}
+  });return out;
+}
+$('#c-load').onclick=()=>{
+  const bytes=parseHex($('#c-hex').value);const err=$('#c-err');
+  if(bytes.length<34){err.textContent=`Načetl jsem jen ${bytes.length} bajtů. Rámec musí mít aspoň 34 (Ethernet + IP hlavička). Vlož bajty jako dvojice hex číslic oddělené mezerou.`;return;}
+  const p=parseInt($('#c-prefix').value.replace('/',''),10);
+  if(!(p>=1&&p<=128)){err.textContent='Prefix zadej jako číslo, např. 24.';return;}
+  const gw=$('#c-gw').value.trim();
+  if(gw&&!/^(ip4|ip6):/.test(norm('ip',gw))){err.textContent='IP brány nevypadá jako platná adresa. Nech pole prázdné, pokud ji zadání neuvádí.';return;}
+  err.textContent='';const isV6=((bytes[12]<<8)|bytes[13])===0x86dd||(((bytes[12]<<8)|bytes[13])===0x8100&&((bytes[16]<<8)|bytes[17])===0x86dd);
+  S.custom=true;examVals={};newFrame({bytes,ctx:{prefix:isV6&&p===24?64:p,gw:gw||null,v6:isV6}});S.custom=true;renderDump();
+  $('#custom').open=false;
+};
+
+/* ---------- blitz ---------- */
+const B={on:false,score:0,end:0,q:null,best:store.get('best',0),lock:false};
+function choice(q,a,opts,ex){const set=new Set([a]);const pool=opts.filter(o=>o!==a);while(set.size<Math.min(4,opts.length))set.add(pool.splice(rnd(pool.length),1)[0]);return{q,a,choices:[...set].sort(()=>Math.random()-.5),ex};}
+const BQ=[
+  ()=>{const x=rnd(256);return{q:`Bajt <code>${H(x)}</code> desítkově?`,a:String(x),ex:bdec(x)};},
+  ()=>{const x=rnd(256);return{q:`Bajt <code>${H(x)}</code> desítkově?`,a:String(x),ex:bdec(x)};},
+  ()=>{const v=pick([53,80,443,22,25,123,67,68,8080,rint(1024,65535),rint(49152,65535),rint(256,4000)]);return{q:`Port <code>${H(v>>8)} ${H(v&255)}</code> desítkově?`,a:String(v),ex:wdec(v>>8,v&255)};},
+  ()=>{const ip=pick([privIp,pubIp])();return{q:`IPv4 <code>${ip.map(H).join(' ')}</code> zapiš s tečkami`,a:ip.join('.'),ip:true,ex:ip.map(x=>`${H(x)}→${x}`).join(', ')};},
+  ()=>{const [h,n]=pick([['08 00','IPv4'],['86 dd','IPv6'],['08 06','ARP'],['81 00','VLAN 802.1Q']]);return choice(`EtherType <code>${h}</code> znamená`,n,['IPv4','IPv6','ARP','VLAN 802.1Q'],`${h} = ${n}`);},
+  ()=>{const [h,n]=pick([['01','ICMP'],['06','TCP'],['11','UDP'],['3a','ICMPv6']]);return choice(`IP protokol <code>${h}</code> je`,n,['ICMP','TCP','UDP','ICMPv6'],`${h} = ${n}`);},
+  ()=>{const [h,n]=pick([['02','SYN'],['12','SYN + ACK'],['10','ACK'],['18','PSH + ACK'],['11','FIN + ACK'],['04','RST']]);return choice(`TCP příznaky <code>${h}</code> jsou`,n,['SYN','SYN + ACK','ACK','PSH + ACK','FIN + ACK','RST'],`${h} = ${n}`);},
+  ()=>{const [p,n]=pick([[53,'DNS'],[80,'HTTP'],[443,'HTTPS'],[22,'SSH'],[25,'SMTP'],[67,'DHCP'],[23,'Telnet'],[21,'FTP']]);return choice(`Port <b>${p}</b> je služba`,n,['DNS','HTTP','HTTPS','SSH','SMTP','DHCP','Telnet','FTP'],`${p} = ${n}`);},
+  ()=>{const x=pick([0x45,0x46,0x47,0x48,0x4f]);return{q:`IPv4 hlavička začíná bajtem <code>${H(x)}</code>. Kolik bajtů má hlavička?`,a:String((x&15)*4),ex:`druhá číslice ${x&15} × 4 = ${(x&15)*4} B`};},
+  ()=>{const [h,n]=pick([['01 00','dotaz'],['81 80','odpověď'],['01 20','dotaz'],['81 83','odpověď']]);return choice(`DNS příznaky <code>${h}</code>: dotaz, nebo odpověď?`,n,['dotaz','odpověď'],`první bit: ${h[0]==='8'?'8 → QR=1 → odpověď':'0 → QR=0 → dotaz'}`);},
+  ()=>{const [h,n]=pick([['08','Echo Request'],['00','Echo Reply'],['80','Echo Request (v6)'],['81','Echo Reply (v6)'],['87','Neighbor Solicitation'],['88','Neighbor Advertisement']]);return choice(`ICMP${+('0x'+h)>=0x80?'v6':''} typ <code>${h}</code> je`,n,['Echo Request','Echo Reply','Echo Request (v6)','Echo Reply (v6)','Neighbor Solicitation','Neighbor Advertisement'],`${h} = ${n}`);},
+  ()=>{const x=rint(16,255);return{q:`Číslo <b>${x}</b> zapiš hexadecimálně`,a:H(x),hex:true,ex:`${x} = ${x>>4}×16 + ${x&15} → ${H(x)}`};},
+  ()=>{const a=pick([[192,168],[10,1],[172,16]]);const S1=[...a,rnd(256),rint(1,254)];const same=chance(.5);const D=same?[S1[0],S1[1],S1[2],rint(1,254)]:[S1[0],S1[1],(S1[2]+rint(1,200))%256,rint(1,254)];
+    return choice(`Odesílatel ${S1.join('.')}/24 posílá na ${D.join('.')}. Půjde to přes bránu?`,same?'ne, přímo':'ano, přes bránu',['ne, přímo','ano, přes bránu'],same?'stejná první 3 čísla → stejná síť':'jiné třetí číslo → jiná síť /24');},
+];
+function bNext(){B.q=pick(BQ)();B.lock=false;$('#b-q').innerHTML=B.q.q;
+  if(B.q.choices){$('#b-in').innerHTML=`<div class="opts">${B.q.choices.map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;$('#b-in').querySelectorAll('button').forEach(b=>b.onclick=()=>bAnswer(b.dataset.v,b));}
+  else{$('#b-in').innerHTML='<div class="ansRow"><input type="text" id="b-inp" autocomplete="off" spellcheck="false" inputmode="'+(B.q.ip||B.q.hex?'text':'numeric')+'"><button class="btn primary" id="b-ok">OK</button></div>';
+    const i=$('#b-inp');i.focus();i.onkeydown=e=>{if(e.key==='Enter')bAnswer(i.value);};$('#b-ok').onclick=()=>bAnswer(i.value);}}
+function bAnswer(v,btn){if(!B.on||B.lock)return;v=String(v).trim().toLowerCase();
+  let ok=B.q.ip?norm('ip',v)==='ip4:'+B.q.a:B.q.hex?v.replace(/^0x/,'').padStart(2,'0')===B.q.a:v===String(B.q.a).toLowerCase();
+  if(ok){B.score++;$('#b-score').textContent=B.score;$('#b-fb').innerHTML=`<span style="color:var(--ok)">✓ ${B.q.ex}</span>`;bNext();}
+  else{B.lock=true;if(btn)btn.classList.add('wrong');$('#b-fb').innerHTML=`<span style="color:var(--bad)">✗ Správně: <b>${esc(B.q.a)}</b> · ${B.q.ex}</span>`;setTimeout(()=>{if(B.on)bNext();},1600);}}
+function bTick(){if(!B.on)return;const left=Math.max(0,B.end-Date.now());$('#b-time').textContent=Math.ceil(left/1000);$('#b-bar').style.width=(left/600)+'%';
+  if(left<=0){B.on=false;if(B.score>B.best){B.best=B.score;store.set('best',B.best);$('#b-best').textContent=B.best;$('#b-q').innerHTML=`Konec! <b>${B.score}</b> bodů, nový rekord!`;}else $('#b-q').innerHTML=`Konec! <b>${B.score}</b> bodů.`;
+    $('#b-in').innerHTML='';$('#b-start').hidden=false;$('#b-start').textContent='Znovu';return;}requestAnimationFrame(bTick);}
+$('#b-best').textContent=B.best;
+$('#b-start').onclick=()=>{B.on=true;B.score=0;B.end=Date.now()+60000;$('#b-score').textContent=0;$('#b-fb').innerHTML='';$('#b-start').hidden=true;bNext();bTick();};
+
+/* ---------- boot ---------- */
+newFrame();
+setTab(store.get('tab','guide'));
+</script>
+</body>
+</html>
